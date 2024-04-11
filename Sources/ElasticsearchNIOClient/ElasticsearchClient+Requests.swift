@@ -237,6 +237,31 @@ extension ElasticsearchClient {
         }
     }
 
+    public func customSearchIds<Query: Encodable>(from indexName: String, query: Query) -> EventLoopFuture<ESGetMultipleIdsResponse> {
+        do {
+            let body = try ByteBuffer(data: self.jsonEncoder.encode(query))
+            return sendCustomRequestIds(from: indexName, body: body)
+        } catch {
+            return self.eventLoop.makeFailedFuture(error)
+        }
+    }
+    public func customSearchIds(from indexName: String, query: Data) -> EventLoopFuture<ESGetMultipleIdsResponse> {
+        let body = ByteBuffer(data: query)
+        return sendCustomRequestIds(from: indexName, body: body)
+    }
+    private func sendCustomRequestIds(from indexName: String, body: ByteBuffer) -> EventLoopFuture<ESGetMultipleIdsResponse> {
+        do {
+            let url = try buildURL(path: "/\(indexName)/_search", queryItems: [
+                URLQueryItem(name: "_source", value: "false")
+            ])
+            var headers = HTTPHeaders()
+            headers.add(name: "content-type", value: "application/json")
+            return sendRequest(url: url, method: .GET, headers: headers, body: body)
+        } catch {
+            return self.eventLoop.makeFailedFuture(error)
+        }
+    }
+
     public func createIndex(_ indexName: String, mappings: [String: Any], settings: [String: Any]) -> EventLoopFuture<ESAcknowledgedResponse> {
         do {
             let url = try buildURL(path: "/\(indexName)")
