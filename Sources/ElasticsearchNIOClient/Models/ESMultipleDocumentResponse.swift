@@ -16,4 +16,5 @@ public struct ESGetMultipleDocumentsResponse<Document: Decodable>: Decodable {
     }
 
     public let hits: Hits
+    public let aggregations: [ String : ESAggregation ]?
 }
