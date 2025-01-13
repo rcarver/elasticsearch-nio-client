@@ -16,4 +16,5 @@ public struct ESGetMultipleIdsResponse: Decodable {
     }
 
     public let hits: Hits
+    public let aggregations: [ String : ESAggregation ]?
 }

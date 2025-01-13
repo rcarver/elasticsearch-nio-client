@@ -99,7 +99,7 @@ class ElasticSearchIntegrationTests: XCTestCase {
         XCTAssertEqual(results.hits.total!.value, 100)
         XCTAssertEqual(results.hits.total!.relation, .eq)
     }
-    
+
     func testCreateDocument() throws {
         let item = SomeItem(id: UUID(), name: "Banana")
         let response = try client.createDocument(item, in: self.indexName).wait()
@@ -506,6 +506,62 @@ class ElasticSearchIntegrationTests: XCTestCase {
         XCTAssertEqual(results.hits.total!.value, 100)
         XCTAssertTrue(results.hits.hits.contains(where: { $0.source.name == "Some 11 Apples" }))
         XCTAssertTrue(results.hits.hits.contains(where: { $0.source.name == "Some 29 Apples" }))
+        XCTAssertNil(results.aggregations)
+    }
+
+    func testCustomSearchAggs() throws {
+        for index in 0...5 {
+            let name = "John \(index.isMultiple(of: 2) ? "Doe" : "Smith")"
+            let item = SomeItem(id: UUID(), name: name)
+            _ = try client.createDocument(item, in: self.indexName).wait()
+        }
+
+        // This is required for ES to settle and load the indexes to return the right results
+        Thread.sleep(forTimeInterval: 2.0)
+
+        struct Query: Encodable {
+            let query: QueryBody
+            let aggs: [ String : AggBody ]
+        }
+
+        struct QueryBody: Encodable {
+            let queryString: QueryString
+
+            enum CodingKeys: String, CodingKey {
+                case queryString = "query_string"
+            }
+        }
+
+        struct QueryString: Encodable {
+            let query: String
+        }
+
+        struct AggBody: Encodable {
+            let terms: [ String : String ]
+            init(field: String) {
+                self.terms = [ "field": field ]
+            }
+        }
+
+        let queryString = QueryString(query: "John")
+        let queryBody = QueryBody(queryString: queryString)
+        let nameAgg = AggBody(field: "id.keyword")
+        let query = Query(
+            query: queryBody,
+            aggs: [ "name" : nameAgg ]
+        )
+
+        let enc = JSONEncoder()
+        enc.outputFormatting = .prettyPrinted
+        print(String(data: try enc.encode(query), encoding: .utf8)!)
+
+        let results: ESGetMultipleDocumentsResponse<SomeItem> = try client.customSearch(from: indexName, query: query).wait()
+        XCTAssertEqual(results.hits.hits.count, 6)
+        XCTAssertEqual(results.hits.total!.value, 6)
+        XCTAssertTrue(results.hits.hits.contains(where: { $0.source.name == "John Doe" }))
+        XCTAssertTrue(results.hits.hits.contains(where: { $0.source.name == "John Smith" }))
+        XCTAssertNotNil(results.aggregations)
+        XCTAssertEqual(results.aggregations?["name"]?.buckets.count, 6)
     }
 
     func testCustomSearchWithTrackTotalHitsFalse() throws {
